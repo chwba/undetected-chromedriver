@@ -26,15 +26,19 @@ from loguru import logger
 from selenium.webdriver import Chrome as _Chrome
 from selenium.webdriver import ChromeOptions as _ChromeOptions
 from urllib.request import urlopen, urlretrieve
-from typing import List
-from pathlib import WindowsPath, PosixPath
+from pprint import pformat
+from pygments import highlight
+from pygments.lexers import PythonLexer
+from pygments.formatters import TerminalFormatter
 
 __IS_PATCHED__ = 0
 TARGET_VERSION = 0
+DEBUG = 0
 
 
 class Chrome:
-	def __new__(cls, *args, enable_console_log=False, **kwargs):
+	def __new__(cls, *args, enable_console_log=True, **kwargs):
+		global DEBUG
 
 		if not ChromeDriverManager.installed:
 			ChromeDriverManager().install()
@@ -50,9 +54,14 @@ class Chrome:
 		instance = object.__new__(_Chrome)
 		instance.__init__(*args, **kwargs)
 
+		if enable_console_log:
+			DEBUG = 1
+		else:
+			DEBUG = 0
+
 		instance._orig_get = instance.get
 
-		def _get_wrapped():
+		def _get_wrapped(*args, **kwargs):
 			if instance.execute_script("return navigator.webdriver"):
 				instance.execute_cdp_cmd(
 
@@ -70,13 +79,13 @@ class Chrome:
 									: target[key]
 								})
 							});
-							
+
 							(function () {
 							}) ();
 
 							""" + ("console.log = console.dir = console.error = function(){};" if not enable_console_log else '')}
 				)
-			return instance._orig_get()
+			return instance._orig_get(*args, **kwargs)
 
 		instance.get = _get_wrapped
 
@@ -87,12 +96,17 @@ class Chrome:
 			"Network.setUserAgentOverride",
 			{"userAgent": original_user_agent_string.replace("Headless", ""), },
 		)
-		logger.info(f"starting undetected_chromedriver.Chrome({args}, {kwargs})")
+
+		if DEBUG:
+			logger.info(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
+
 		return instance
 
 
 class ChromeOptions:
-	def __new__(cls, plugins: List[str, WindowsPath, PosixPath] = None, *arguments, **experimental_options):
+	def __new__(cls, *arguments, **experimental_options):
+		global DEBUG
+
 		if not ChromeDriverManager.installed:
 			ChromeDriverManager().install()
 		if not ChromeDriverManager.selenium_patched:
@@ -107,33 +121,29 @@ class ChromeOptions:
 			"useAutomationExtension": False,
 		}
 
-		arg_list.extend(list(set([item for item in arguments if not any(x_item in item or item in x_item for x_item in arg_list)])))
+		arg_list.extend(list(set([item for item in arguments if type(item) == str and not any(x_item in item or item in x_item for x_item in arg_list)])))
+		plugin_list = [item for item in arguments if type(item) != str]
+
+		for plugin in plugin_list:
+			logger.info(f"Adding {str(plugin.name)}")
+			instance.add_extension(str(plugin.resolve()))
 
 		for k in experimental_options.keys():
 			if k == "excludeSwitches":
 				exp_options[k].extend(experimental_options[k])
+			elif k == 'debug':
+				DEBUG = 1
 			else:
 				exp_options[k] = experimental_options[k]
 
-		if plugins:
-			for plugin in plugins:
-				if any(type(plugin) == is_path for is_path in (WindowsPath, PosixPath)):
-					logger.info(f"Adding {str(plugin.name)}")
-					instance.add_extension(str(plugin.resolve()))
-				else:
-					plugin_path = str(plugin)
-					logger.info(f"Adding {plugin_path}")
-					instance.add_extension(plugin_path)
-
-		print(f"Setting undetected_chromedriver.ChromeOptions...")
-		print("Arguments:")
-		PrettyPrinter().pprint(arg_list)
-		print("Experimental options:")
-		PrettyPrinter().pprint(exp_options)
+		if DEBUG:
+			logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
+			logger.info(f"Arguments:\n{pformat(arg_list, compact=True, sort_dicts=False)}")
+			logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 
 		for item in arg_list:
 			instance.add_argument(item)
-		for k, v in exp_options:
+		for k, v in exp_options.items():
 			instance.add_experimental_option(k, v)
 
 		return instance
@@ -186,7 +196,8 @@ class ChromeDriverManager(object):
 
 		selenium.webdriver.Chrome = Chrome
 		selenium.webdriver.ChromeOptions = ChromeOptions
-		logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
+		if DEBUG:
+			logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
 		self.__class__.selenium_patched = True
 
 	def install(self, patch_selenium=True):
