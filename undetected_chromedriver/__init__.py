@@ -37,7 +37,7 @@ DEBUG = 0
 
 
 class Chrome:
-	def __new__(cls, *args, enable_console_log=True, **kwargs):
+	def __new__(cls, *args, enable_console_log=False, **kwargs):
 		global DEBUG
 
 		if not ChromeDriverManager.installed:
