@@ -138,7 +138,7 @@ class ChromeOptions:
 
 		if DEBUG:
 			logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
-			logger.info(f"Arguments:\n{pformat(arg_list, compact=True, sort_dicts=False)}")
+			logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 			logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 
 		for item in arg_list:
