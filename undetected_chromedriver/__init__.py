@@ -125,7 +125,6 @@ class ChromeOptions:
 		plugin_list = [item for item in arguments if type(item) != str]
 
 		for plugin in plugin_list:
-			logger.info(f"Adding {str(plugin.name)}")
 			instance.add_extension(str(plugin.resolve()))
 
 		for k in experimental_options.keys():
@@ -140,6 +139,7 @@ class ChromeOptions:
 			logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
 			logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 			logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+			logger.info(f"Plugins:\n{highlight(pformat([plugin.name for plugin in plugins], compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 
 		for item in arg_list:
 			instance.add_argument(item)
