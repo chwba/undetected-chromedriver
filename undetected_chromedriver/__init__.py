@@ -23,13 +23,13 @@ import sys
 import zipfile
 from distutils.version import LooseVersion
 from loguru import logger
+from pprint import pformat
+from pygments import highlight
+from pygments.formatters import TerminalFormatter
+from pygments.lexers import PythonLexer
 from selenium.webdriver import Chrome as _Chrome
 from selenium.webdriver import ChromeOptions as _ChromeOptions
 from urllib.request import urlopen, urlretrieve
-from pprint import pformat
-from pygments import highlight
-from pygments.lexers import PythonLexer
-from pygments.formatters import TerminalFormatter
 
 __IS_PATCHED__ = 0
 TARGET_VERSION = 0
