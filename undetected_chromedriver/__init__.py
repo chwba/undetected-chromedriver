@@ -19,6 +19,7 @@ by UltrafunkAmsterdam (https://github.com/ultrafunkamsterdam)
 import io
 import logging
 import os
+import re
 import sys
 import zipfile
 from distutils.version import LooseVersion
@@ -64,26 +65,27 @@ class Chrome:
 		def _get_wrapped(*args, **kwargs):
 			if instance.execute_script("return navigator.webdriver"):
 				instance.execute_cdp_cmd(
-
 					"Page.addScriptToEvaluateOnNewDocument",
-					{"source": """
-
-							Object.defineProperty(window, 'navigator', {
-								value: new Proxy(navigator, {
-								has: (target, key) => (key === 'webdriver' ? false : key in target),
-								get: (target, key) =>
-									key === 'webdriver'
-									? undefined
-									: typeof target[key] === 'function'
-									? target[key].bind(target)
-									: target[key]
-								})
-							});
-
-							(function () {
-							}) ();
-
-							""" + ("console.log = console.dir = console.error = function(){};" if not enable_console_log else '')}
+					{
+						"source": """
+				                   Object.defineProperty(window, 'navigator', {
+				                       value: new Proxy(navigator, {
+				                       has: (target, key) => (key === 'webdriver' ? false : key in target),
+				                       get: (target, key) =>
+				                           key === 'webdriver'
+				                           ? undefined
+				                           : typeof target[key] === 'function'
+				                           ? target[key].bind(target)
+				                           : target[key]
+				                       })
+				                   });
+				               """
+								  + (
+									  "console.log = console.dir = console.error = function(){};"
+									  if not enable_console_log
+									  else ""
+								  )
+					},
 				)
 			return instance._orig_get(*args, **kwargs)
 
@@ -96,10 +98,7 @@ class Chrome:
 			"Network.setUserAgentOverride",
 			{"userAgent": original_user_agent_string.replace("Headless", ""), },
 		)
-
-		if DEBUG:
-			logger.info(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
-
+		logger.info(f"starting undetected_chromedriver.Chrome({args}, {kwargs})")
 		return instance
 
 
@@ -156,16 +155,20 @@ class ChromeDriverManager(object):
 
 	DL_BASE = "https://chromedriver.storage.googleapis.com/"
 
-	def __init__(self, executable_path=None, target_version=None):
+	def __init__(self, executable_path=None, target_version=None, *args, **kwargs):
 
 		_platform = sys.platform
 
-		if TARGET_VERSION:  # user override using global
+		if TARGET_VERSION:
+			# use global if set
 			self.target_version = TARGET_VERSION
+
 		if target_version:
+			# use explicitly passed target
 			self.target_version = target_version  # user override
+
 		if not self.target_version:
-			# if target_version still not set, fetch the current major release version
+			# none of the above (default) and just get current version
 			self.target_version = self.get_release_version_number().version[
 				0
 			]  # only major version int
@@ -185,10 +188,10 @@ class ChromeDriverManager(object):
 		self.executable_path = executable_path or exe_name
 		self._exe_name = exe_name
 
-	def patch_selenium_webdriver(self):
+	@staticmethod
+	def patch_selenium_webdriver():
 		"""
 		Patches selenium package Chrome, ChromeOptions classes for current session
-
 		:return:
 		"""
 		import selenium.webdriver.chrome.service
@@ -196,26 +199,24 @@ class ChromeDriverManager(object):
 
 		selenium.webdriver.Chrome = Chrome
 		selenium.webdriver.ChromeOptions = ChromeOptions
-		if DEBUG:
-			logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
-		self.__class__.selenium_patched = True
+		logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
+		self_.__class__.selenium_patched = True
 
 	def install(self, patch_selenium=True):
 		"""
 		Initialize the patch
-
 		This will:
 		 download chromedriver if not present
 		 patch the downloaded chromedriver
 		 patch selenium package if <patch_selenium> is True (default)
-
 		:param patch_selenium: patch selenium webdriver classes for Chrome and ChromeDriver (for current python session)
 		:return:
 		"""
 		if not os.path.exists(self.executable_path):
 			self.fetch_chromedriver()
-			self.patch_binary()
-			self.__class__.installed = True
+			if not self.__class__.installed:
+				if self.patch_binary():
+					self.__class__.installed = True
 
 		if patch_selenium:
 			self.patch_selenium_webdriver()
@@ -223,7 +224,6 @@ class ChromeDriverManager(object):
 	def get_release_version_number(self):
 		"""
 		Gets the latest major version available, or the latest major version of self.target_version if set explicitly.
-
 		:return: version string
 		"""
 		path = (
@@ -236,7 +236,6 @@ class ChromeDriverManager(object):
 	def fetch_chromedriver(self):
 		"""
 		Downloads ChromeDriver from source and unpacks the executable
-
 		:return: on success, name of the unpacked executable
 		"""
 		base_ = self._base
@@ -258,24 +257,17 @@ class ChromeDriverManager(object):
 	def patch_binary(self):
 		"""
 		Patches the ChromeDriver binary
-
 		:return: False on failure, binary name on success
 		"""
-		global __IS_PATCHED__
-		if self.__class__.installed:
-			return
-
-		with io.open(self.executable_path, "r+b") as binary:
-			for line in iter(lambda: binary.readline(), b""):
+		linect = 0
+		with io.open(self.executable_path, "r+b") as fh:
+			for line in iter(lambda: fh.readline(), b""):
 				if b"cdc_" in line:
-					binary.seek(-len(line), 1)
-					line = b"  var key = '$azc_abcdefghijklmnopQRstuv_';\n"
-					binary.write(line)
-					__IS_PATCHED__ = 1
-					break
-			else:
-				return False
-			return True
+					fh.seek(-len(line), 1)
+					newline = re.sub(b"cdc_.{22}", b"xxx_undetectedchromeDRiver", line)
+					fh.write(newline)
+					linect += 1
+			return linect
 
 
 def install(executable_path=None, target_version=None):
