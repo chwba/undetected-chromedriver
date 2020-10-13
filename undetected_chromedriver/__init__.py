@@ -17,20 +17,20 @@ by UltrafunkAmsterdam (https://github.com/ultrafunkamsterdam)
 """
 
 import io
-import logging
 import os
 import re
 import sys
 import zipfile
 from distutils.version import LooseVersion
-from loguru import logger
 from pprint import pformat
+from urllib.request import urlopen, urlretrieve
+
+from loguru import logger
 from pygments import highlight
 from pygments.formatters import TerminalFormatter
 from pygments.lexers import PythonLexer
 from selenium.webdriver import Chrome as _Chrome
 from selenium.webdriver import ChromeOptions as _ChromeOptions
-from urllib.request import urlopen, urlretrieve
 
 __IS_PATCHED__ = 0
 TARGET_VERSION = 0
@@ -188,8 +188,7 @@ class ChromeDriverManager(object):
 		self.executable_path = executable_path or exe_name
 		self._exe_name = exe_name
 
-	@staticmethod
-	def patch_selenium_webdriver():
+	def patch_selenium_webdriver(self):
 		"""
 		Patches selenium package Chrome, ChromeOptions classes for current session
 		:return:
@@ -200,7 +199,7 @@ class ChromeDriverManager(object):
 		selenium.webdriver.Chrome = Chrome
 		selenium.webdriver.ChromeOptions = ChromeOptions
 		logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
-		self_.__class__.selenium_patched = True
+		self.__class__.selenium_patched = True
 
 	def install(self, patch_selenium=True):
 		"""
