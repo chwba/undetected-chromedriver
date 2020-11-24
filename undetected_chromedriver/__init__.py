@@ -22,15 +22,14 @@ import re
 import sys
 import zipfile
 from distutils.version import LooseVersion
-from pprint import pformat
-from urllib.request import urlopen, urlretrieve
-
 from loguru import logger
+from pprint import pformat
 from pygments import highlight
 from pygments.formatters import TerminalFormatter
 from pygments.lexers import PythonLexer
-from selenium.webdriver import Chrome as _Chrome
-from selenium.webdriver import ChromeOptions as _ChromeOptions
+from selenium.webdriver import Chrome as _Chrome, ChromeOptions as _ChromeOptions
+from string import ascii_letters
+from urllib.request import urlopen, urlretrieve
 
 __IS_PATCHED__ = 0
 TARGET_VERSION = 0
@@ -258,14 +257,33 @@ class ChromeDriverManager(object):
 		Patches the ChromeDriver binary
 		:return: False on failure, binary name on success
 		"""
+		import random
+
+		CHARS = 'abcdefghijklmnopqrstuvwxyz'
+		xxx_uc = (''.join(random.choices(CHARS, k=3)) + "_" + ''.join(random.choices(CHARS, k=22))).encode()
+
+		try:
+			with open(f"{os.path.abspath(self.executable_path).replace(chr(92), '/').rsplit('/', 1)[0]}/.undetected_chromedriver") as ucd:
+				_3_22 = ucd.read().encode()
+		except FileNotFoundError:
+			_3_22 = None
+
 		linect = 0
 		with io.open(self.executable_path, "r+b") as fh:
 			for line in iter(lambda: fh.readline(), b""):
 				if b"cdc_" in line:
 					fh.seek(-len(line), 1)
-					newline = re.sub(b"cdc_.{22}", b"xxx_undetectedchromeDRiver", line)
+					newline = re.sub(b"cdc_.{22}", xxx_uc, line)
 					fh.write(newline)
 					linect += 1
+				elif _3_22 and _3_22 in line:
+					fh.seek(-len(line), 1)
+					newline = re.sub(_3_22, xxx_uc, line)
+					fh.write(newline)
+					linect += 1
+			if linect:
+				with open(f"{os.path.abspath(self.executable_path).replace(chr(92), '/').rsplit('/', 1)[0]}/.undetected_chromedriver", "w") as ucd:
+					ucd.write(xxx_uc.decode())
 			return linect
 
 
