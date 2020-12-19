@@ -95,7 +95,10 @@ class Chrome:
 			"Network.setUserAgentOverride",
 			{"userAgent": original_user_agent_string.replace("Headless", ""), },
 		)
-		logger.info(f"starting undetected_chromedriver.Chrome({args}, {kwargs})")
+
+		if DEBUG:
+			logger.debug(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
+
 		return instance
 
 
@@ -195,7 +198,8 @@ class ChromeDriverManager(object):
 
 		selenium.webdriver.Chrome = Chrome
 		selenium.webdriver.ChromeOptions = ChromeOptions
-		logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
+		if DEBUG:
+			logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
 		self.__class__.selenium_patched = True
 
 	def install(self, patch_selenium=True):
