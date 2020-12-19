@@ -40,65 +40,66 @@ class Chrome:
 	def __new__(cls, *args, enable_console_log=False, **kwargs):
 		global DEBUG
 
-		if not ChromeDriverManager.installed:
-			ChromeDriverManager().install()
-		if not ChromeDriverManager.selenium_patched:
-			ChromeDriverManager().patch_selenium_webdriver()
-		if not kwargs.get("executable_path"):
-			kwargs["executable_path"] = "./{}".format(
-				ChromeDriverManager().executable_path
-			)
-		if not kwargs.get("options"):
-			kwargs["options"] = ChromeOptions()
+        if not ChromeDriverManager.installed:
+            ChromeDriverManager(*args, **kwargs).install()
+        if not ChromeDriverManager.selenium_patched:
+            ChromeDriverManager(*args, **kwargs).patch_selenium_webdriver()
+        if not kwargs.get("executable_path"):
+            kwargs["executable_path"] = "./{}".format(
+                ChromeDriverManager(*args, **kwargs).executable_path
+            )
+        if not kwargs.get("options"):
+            kwargs["options"] = ChromeOptions()
+        instance = object.__new__(_Chrome)
+        instance.__init__(*args, **kwargs)
 
-		instance = object.__new__(_Chrome)
-		instance.__init__(*args, **kwargs)
 
-		if enable_console_log:
-			DEBUG = 1
-		else:
-			DEBUG = 0
+        if enable_console_log:
+            DEBUG = 1
+        else:
+            DEBUG = 0
 
-		instance._orig_get = instance.get
+        instance._orig_get = instance.get
 
-		def _get_wrapped(*args, **kwargs):
-			if instance.execute_script("return navigator.webdriver"):
-				instance.execute_cdp_cmd(
-					"Page.addScriptToEvaluateOnNewDocument",
-					{
-						"source": """
-				                   Object.defineProperty(window, 'navigator', {
-				                       value: new Proxy(navigator, {
-				                       has: (target, key) => (key === 'webdriver' ? false : key in target),
-				                       get: (target, key) =>
-				                           key === 'webdriver'
-				                           ? undefined
-				                           : typeof target[key] === 'function'
-				                           ? target[key].bind(target)
-				                           : target[key]
-				                       })
-				                   });
-				               """
-								  + (
-									  "console.log = console.dir = console.error = function(){};"
-									  if not enable_console_log
-									  else ""
-								  )
-					},
-				)
-			return instance._orig_get(*args, **kwargs)
+        def _get_wrapped(*args, **kwargs):
+            if instance.execute_script("return navigator.webdriver"):
+                instance.execute_cdp_cmd(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {
+                        "source": """
 
-		instance.get = _get_wrapped
+                            Object.defineProperty(window, 'navigator', {
+                                value: new Proxy(navigator, {
+                                has: (target, key) => (key === 'webdriver' ? false : key in target),
+                                get: (target, key) =>
+                                    key === 'webdriver'
+                                    ? undefined
+                                    : typeof target[key] === 'function'
+                                    ? target[key].bind(target)
+                                    : target[key]
+                                })
+                            });
+                        """
+                        + (
+                            "console.log = console.dir = console.error = function(){};"
+                            if not enable_console_log
+                            else ""
+                        )
+                    },
+                )
+            return instance._orig_get(*args, **kwargs)
 
-		original_user_agent_string = instance.execute_script(
-			"return navigator.userAgent"
-		)
-		instance.execute_cdp_cmd(
-			"Network.setUserAgentOverride",
-			{"userAgent": original_user_agent_string.replace("Headless", ""), },
-		)
-		logger.info(f"starting undetected_chromedriver.Chrome({args}, {kwargs})")
-		return instance
+        instance.get = _get_wrapped
+
+        original_user_agent_string = instance.execute_script(
+            "return navigator.userAgent"
+        )
+        instance.execute_cdp_cmd(
+            "Network.setUserAgentOverride",
+            {"userAgent": original_user_agent_string.replace("Headless", ""),},
+        )
+        logger.info(f"starting undetected_chromedriver.Chrome({args}, {kwargs})")
+        return instance
 
 
 class ChromeOptions:
