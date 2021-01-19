@@ -18,11 +18,11 @@ by UltrafunkAmsterdam (https://github.com/ultrafunkamsterdam)
 
 import io
 import os
+import random
 import re
+import string
 import sys
 import zipfile
-import string
-import random
 from distutils.version import LooseVersion
 from pprint import pformat
 from urllib.request import urlopen, urlretrieve
@@ -83,7 +83,7 @@ class Chrome:
 							"console.log = console.dir = console.error = function(){};"
 							if not enable_console_log
 							else ""
-							)
+						)
 					},
 				)
 			return instance._orig_get(*args, **kwargs)
@@ -256,30 +256,30 @@ class ChromeDriverManager(object):
 			os.chmod(self._exe_name, 0o755)
 		return self._exe_name
 
-    @staticmethod
-    def random_cdc():
-        cdc = random.choices(string.ascii_lowercase, k=26)
-        cdc[-6: -4] = map(str.upper, cdc[-6: -4])
-        cdc[2] = cdc[0]
-        cdc[3] = '_'
-        return ''.join(cdc).encode()
+	@staticmethod
+	def random_cdc():
+		cdc = random.choices(string.ascii_lowercase, k=26)
+		cdc[-6: -4] = map(str.upper, cdc[-6: -4])
+		cdc[2] = cdc[0]
+		cdc[3] = '_'
+		return ''.join(cdc).encode()
 
-    def patch_binary(self):
-        """
-        Patches the ChromeDriver binary
+	def patch_binary(self):
+		"""
+		Patches the ChromeDriver binary
 
-        :return: False on failure, binary name on success
-        """
-        linect = 0
-        replacement = self.random_cdc()
-        with io.open(self.executable_path, "r+b") as fh:
-            for line in iter(lambda: fh.readline(), b""):
-                if b"cdc_" in line:
-                    fh.seek(-len(line), 1)
-                    newline = re.sub(b"cdc_.{22}", replacement, line)
-                    fh.write(newline)
-                    linect += 1
-            return linect
+		:return: False on failure, binary name on success
+		"""
+		linect = 0
+		replacement = self.random_cdc()
+		with io.open(self.executable_path, "r+b") as fh:
+			for line in iter(lambda: fh.readline(), b""):
+				if b"cdc_" in line:
+					fh.seek(-len(line), 1)
+					newline = re.sub(b"cdc_.{22}", replacement, line)
+					fh.write(newline)
+					linect += 1
+			return linect
 
 
 def install(executable_path=None, target_version=None):
