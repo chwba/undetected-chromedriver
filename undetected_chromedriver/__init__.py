@@ -23,14 +23,10 @@ import re
 import string
 import sys
 import zipfile
+# from loguru import logger
 from distutils.version import LooseVersion
-from pprint import pformat
 from urllib.request import urlopen, urlretrieve
 
-from loguru import logger
-from pygments import highlight
-from pygments.formatters import TerminalFormatter
-from pygments.lexers import PythonLexer
 from selenium.webdriver import Chrome as _Chrome, ChromeOptions as _ChromeOptions
 
 TARGET_VERSION = 0
@@ -38,7 +34,6 @@ TARGET_VERSION = 0
 
 class Chrome:
 	def __new__(cls, *args, emulate_touch=False, **kwargs):
-		global DEBUG
 
 		if not ChromeDriverManager.installed:
 			ChromeDriverManager().install()
@@ -50,61 +45,61 @@ class Chrome:
 			)
 		if not kwargs.get("options"):
 			kwargs["options"] = ChromeOptions()
+
 		instance = object.__new__(_Chrome)
 		instance.__init__(*args, **kwargs)
 
 		instance._orig_get = instance.get
 
-        def _get_wrapped(*args, **kwargs):
-            if instance.execute_script("return navigator.webdriver"):
-                instance.execute_cdp_cmd(
-                    "Page.addScriptToEvaluateOnNewDocument",
-                    {
-                        "source": """
+		def _get_wrapped(*args, **kwargs):
+			if instance.execute_script("return navigator.webdriver"):
+				instance.execute_cdp_cmd(
+					"Page.addScriptToEvaluateOnNewDocument",
+					{
+						"source": """
+	
+									   Object.defineProperty(window, 'navigator', {
+										   value: new Proxy(navigator, {
+										   has: (target, key) => (key === 'webdriver' ? false : key in target),
+										   get: (target, key) =>
+											   key === 'webdriver'
+											   ? undefined
+											   : typeof target[key] === 'function'
+											   ? target[key].bind(target)
+											   : target[key]
+										   })
+									   });
+								   """
+					},
+				)
+			return instance._orig_get(*args, **kwargs)
 
-                                   Object.defineProperty(window, 'navigator', {
-                                       value: new Proxy(navigator, {
-                                       has: (target, key) => (key === 'webdriver' ? false : key in target),
-                                       get: (target, key) =>
-                                           key === 'webdriver'
-                                           ? undefined
-                                           : typeof target[key] === 'function'
-                                           ? target[key].bind(target)
-                                           : target[key]
-                                       })
-                                   });
-                               """
-                    },
-                )
-            return instance._orig_get(*args, **kwargs)
+		instance.get = _get_wrapped
+		instance.get = _get_wrapped
+		instance.get = _get_wrapped
 
-        instance.get = _get_wrapped
-        instance.get = _get_wrapped
-        instance.get = _get_wrapped
+		original_user_agent_string = instance.execute_script(
+			"return navigator.userAgent"
+		)
+		instance.execute_cdp_cmd(
+			"Network.setUserAgentOverride",
+			{
+				"userAgent": original_user_agent_string.replace("Headless", ""),
+			},
+		)
+		if emulate_touch:
+			instance.execute_cdp_cmd(
+				"Page.addScriptToEvaluateOnNewDocument",
+				{
+					"source": """
+									   Object.defineProperty(navigator, 'maxTouchPoints', {
+										   get: () => 1
+								   })"""
+				},
+			)
 
-        original_user_agent_string = instance.execute_script(
-            "return navigator.userAgent"
-        )
-        instance.execute_cdp_cmd(
-            "Network.setUserAgentOverride",
-            {
-                "userAgent": original_user_agent_string.replace("Headless", ""),
-            },
-        )
-        if emulate_touch:
-            instance.execute_cdp_cmd(
-                "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": """
-                                   Object.defineProperty(navigator, 'maxTouchPoints', {
-                                       get: () => 1
-                               })"""
-                },
-            )
-
-
-    # logger.debug(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
-    return instance
+		# logger.debug(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
+		return instance
 
 
 class ChromeOptions:
@@ -138,13 +133,12 @@ class ChromeOptions:
 			else:
 				exp_options[k] = experimental_options[k]
 
-    # logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
-    # logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
-    # logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
-    # logger.info(f"Plugins:\n{highlight(pformat([plugin.name for plugin in plugin_list], compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+		# logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
+		# logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+		# logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+		# logger.info(f"Plugins:\n{highlight(pformat([plugin.name for plugin in plugin_list], compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 
-
-        for item in arg_list:
+		for item in arg_list:
 			instance.add_argument(item)
 		for k, v in exp_options.items():
 			instance.add_experimental_option(k, v)
@@ -257,13 +251,13 @@ class ChromeDriverManager(object):
 			os.chmod(self._exe_name, 0o755)
 		return self._exe_name
 
-    @staticmethod
-    def random_cdc():
-        cdc = random.choices(string.ascii_lowercase, k=26)
-        cdc[-6:-4] = map(str.upper, cdc[-6:-4])
-        cdc[2] = cdc[0]
-        cdc[3] = "_"
-        return "".join(cdc).encode()
+	@staticmethod
+	def random_cdc():
+		cdc = random.choices(string.ascii_lowercase, k=26)
+		cdc[-6:-4] = map(str.upper, cdc[-6:-4])
+		cdc[2] = cdc[0]
+		cdc[3] = "_"
+		return "".join(cdc).encode()
 
 	def patch_binary(self):
 		"""

@@ -10,26 +10,28 @@ def test_undetected_chromedriver():
 
     import undetected_chromedriver.v2 as uc
     driver = uc.Chrome()
+    driver.get("https://www.mc-market.org/")
     
     with driver:
-        driver.get("https://coinfaucet.eu")
+        driver.get("https://www.mc-market.org/")
+    time.sleep(500)
     time.sleep(4) # sleep only used for timing of screenshot
     driver.save_screenshot("coinfaucet.eu.png")
-
-    with driver:
-        driver.get("https://cia.gov")
-    time.sleep(4) # sleep only used for timing of screenshot
-    driver.save_screenshot("cia.gov.png")
-
-    with driver:
-        driver.get("https://lhcdn.botprotect.io")
-    time.sleep(4) # sleep only used for timing of screenshot
-    driver.save_screenshot("notprotect.io.png")
-
-    with driver:
-        driver.get("https://www.datadome.co")
-    time.sleep(4) # sleep only used for timing of screenshot
-    driver.save_screenshot("datadome.co.png")
+    #
+    # with driver:
+    #     driver.get("https://cia.gov")
+    # time.sleep(4) # sleep only used for timing of screenshot
+    # driver.save_screenshot("cia.gov.png")
+    #
+    # with driver:
+    #     driver.get("https://lhcdn.botprotect.io")
+    # time.sleep(4) # sleep only used for timing of screenshot
+    # driver.save_screenshot("notprotect.io.png")
+    #
+    # with driver:
+    #     driver.get("https://www.datadome.co")
+    # time.sleep(4) # sleep only used for timing of screenshot
+    # driver.save_screenshot("datadome.co.png")
 
 
 test_undetected_chromedriver()
