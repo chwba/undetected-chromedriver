@@ -76,8 +76,10 @@ def find_chrome_executable():
         for item in os.environ.get("PATH").split(os.pathsep):
             for subitem in ("google-chrome", "chromium", "chromium-browser"):
                 candidates.add(os.sep.join((item, subitem)))
-        if 'darwin' in sys.platform:
-            candidates.update(["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"])
+        if "darwin" in sys.platform:
+            candidates.update(
+                ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+            )
     else:
         for item in map(
             os.environ.get, ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")
@@ -94,8 +96,9 @@ def find_chrome_executable():
 
 
 class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
-    
-    __doc__ =   """\
+
+    __doc__ = (
+        """\
     --------------------------------------------------------------------------
     NOTE: 
     Chrome has everything included to work out of the box.
@@ -103,7 +106,9 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
     any customizations MAY lead to trigger bot migitation systems.
     
     --------------------------------------------------------------------------
-    """ + selenium.webdriver.remote.webdriver.WebDriver.__doc__
+    """
+        + selenium.webdriver.remote.webdriver.WebDriver.__doc__
+    )
 
     _instances = set()
 
@@ -119,8 +124,9 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
         keep_alive=True,
         debug_addr=None,
         user_data_dir=None,
-        factor=0.5,
-        delay=1,
+        factor=1,
+        delay=2,
+        emulate_touch=False,
     ):
 
         p = Patcher(target_path=executable_path)
@@ -165,6 +171,7 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
         extra_args = []
         if options.headless:
             extra_args.append("--headless")
+            extra_args.append("--window-size=1920,1080")
 
         self.browser_args = [
             find_chrome_executable(),
@@ -195,12 +202,60 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
             keep_alive=keep_alive,
         )
 
+        if options.headless:
+
+            orig_get = self.get
+
+            def get_wrapped(*args, **kwargs):
+                if self.execute_script("return navigator.webdriver"):
+                    self.execute_cdp_cmd(
+                        "Page.addScriptToEvaluateOnNewDocument",
+                        {
+                            "source": """
+                                Object.defineProperty(window, 'navigator', {
+                                    value: new Proxy(navigator, {
+                                    has: (target, key) => (key === 'webdriver' ? false : key in target),
+                                    get: (target, key) =>
+                                        key === 'webdriver'
+                                        ? undefined
+                                        : typeof target[key] === 'function'
+                                        ? target[key].bind(target)
+                                        : target[key]
+                                    })
+                                });
+                            """
+                        },
+                    )
+
+                    self.execute_cdp_cmd(
+                        "Network.setUserAgentOverride",
+                        {
+                            "userAgent": self.execute_script(
+                                "return navigator.userAgent"
+                            ).replace("Headless", "")
+                        },
+                    )
+                return orig_get(*args, **kwargs)
+
+            self.get = get_wrapped
+
+        if emulate_touch:
+            self.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": """
+                           Object.defineProperty(navigator, 'maxTouchPoints', {
+                                   get: () => 1
+                           })"""
+                },
+            )
+
     def start_session(self, capabilities=None, browser_profile=None):
         if not capabilities:
             capabilities = self.options.to_capabilities()
         super().start_session(capabilities, browser_profile)
 
-    def get_in(self, url: str, delay=2.5, factor=1):
+    def get_in(self, url: str, delay=2, factor=1):
         """
         :param url: str
         :param delay: int
@@ -233,9 +288,10 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
         try:
             self.get(url)
         finally:
-            self.close()
+            self.service.stop()
             # threading.Timer(factor or self.factor, self.close).start()
             time.sleep(delay or self.delay)
+            self.service.start()
             self.start_session()
 
     def quit(self):
@@ -263,9 +319,11 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        threading.Timer(self.factor, self.start_session).start()
+        self.service.stop()
+        # threading.Timer(self.factor, self.service.start).start()
         time.sleep(self.delay)
+        self.service.start()
+        self.start_session()
 
     def __hash__(self):
         return hash(self.options.debugger_address)
@@ -274,10 +332,9 @@ class Chrome(selenium.webdriver.chrome.webdriver.WebDriver):
 class Patcher(object):
     url_repo = "https://chromedriver.storage.googleapis.com"
 
-    def __init__(self, target_path=None, force=False, version_main: int = 0):
-        
-        if not target_path:
-            target_path = os.path.join(tempfile.gettempdir(), 'undetected_chromedriver', 'chromedriver')
+    def __init__(
+        self, target_path="./chromedriver", force=False, version_main: int = 0
+    ):
         if not IS_POSIX:
             if not target_path[-4:] == ".exe":
                 target_path += ".exe"
@@ -323,14 +380,10 @@ class Patcher(object):
         :return: version string
         :rtype: LooseVersion
         """
-        path = (
-            "/"
-            + (
-                "latest_release"
-                if not self.version_main
-                else f"latest_release_{self.version_main}"
-            ).upper()
-        )
+        path = "/latest_release"
+        if self.version_main:
+            path += f"_{self.version_main}"
+        path = path.upper()
         logger.debug("getting release number from %s" % path)
         return LooseVersion(urlopen(self.url_repo + path).read().decode())
 
@@ -363,7 +416,7 @@ class Patcher(object):
             os.makedirs(os.path.dirname(self.target_path), mode=0o755)
         except OSError:
             pass
-        with zipfile.ZipFile(self.zipname, mode='r') as zf:
+        with zipfile.ZipFile(self.zipname, mode="r") as zf:
             zf.extract(self.exename)
         os.rename(self.exename, self.target_path)
         os.remove(self.zipname)
@@ -445,9 +498,6 @@ class Patcher(object):
                     fh.write(newline)
                     linect += 1
             return linect
-
-    def __del__(self):
-        shutil.rmtree(os.path.dirname(self.target_path), ignore_errors=True)
 
 
 class ChromeOptions(selenium.webdriver.chrome.webdriver.Options):

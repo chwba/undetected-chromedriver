@@ -33,13 +33,11 @@ from pygments.formatters import TerminalFormatter
 from pygments.lexers import PythonLexer
 from selenium.webdriver import Chrome as _Chrome, ChromeOptions as _ChromeOptions
 
-__IS_PATCHED__ = 0
 TARGET_VERSION = 0
-DEBUG = 0
 
 
 class Chrome:
-	def __new__(cls, *args, enable_console_log=False, **kwargs):
+	def __new__(cls, *args, emulate_touch=False, **kwargs):
 		global DEBUG
 
 		if not ChromeDriverManager.installed:
@@ -55,58 +53,62 @@ class Chrome:
 		instance = object.__new__(_Chrome)
 		instance.__init__(*args, **kwargs)
 
-		if enable_console_log:
-			DEBUG = 1
-		else:
-			DEBUG = 0
-
 		instance._orig_get = instance.get
 
-		def _get_wrapped(*args, **kwargs):
-			if instance.execute_script("return navigator.webdriver"):
-				instance.execute_cdp_cmd(
-					"Page.addScriptToEvaluateOnNewDocument",
-					{
-						"source": """
-								Object.defineProperty(window, 'navigator', {
-									value: new Proxy(navigator, {
-									has: (target, key) => (key === 'webdriver' ? false : key in target),
-									get: (target, key) =>
-										key === 'webdriver'
-										? undefined
-										: typeof target[key] === 'function'
-										? target[key].bind(target)
-										: target[key]
-									})
-								});
-							""" + (
-							"console.log = console.dir = console.error = function(){};"
-							if not enable_console_log
-							else ""
-						)
-					},
-				)
-			return instance._orig_get(*args, **kwargs)
+        def _get_wrapped(*args, **kwargs):
+            if instance.execute_script("return navigator.webdriver"):
+                instance.execute_cdp_cmd(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {
+                        "source": """
 
-		instance.get = _get_wrapped
+                                   Object.defineProperty(window, 'navigator', {
+                                       value: new Proxy(navigator, {
+                                       has: (target, key) => (key === 'webdriver' ? false : key in target),
+                                       get: (target, key) =>
+                                           key === 'webdriver'
+                                           ? undefined
+                                           : typeof target[key] === 'function'
+                                           ? target[key].bind(target)
+                                           : target[key]
+                                       })
+                                   });
+                               """
+                    },
+                )
+            return instance._orig_get(*args, **kwargs)
 
-		original_user_agent_string = instance.execute_script(
-			"return navigator.userAgent"
-		)
-		instance.execute_cdp_cmd(
-			"Network.setUserAgentOverride",
-			{"userAgent": original_user_agent_string.replace("Headless", ""), },
-		)
+        instance.get = _get_wrapped
+        instance.get = _get_wrapped
+        instance.get = _get_wrapped
 
-		if DEBUG:
-			logger.debug(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
+        original_user_agent_string = instance.execute_script(
+            "return navigator.userAgent"
+        )
+        instance.execute_cdp_cmd(
+            "Network.setUserAgentOverride",
+            {
+                "userAgent": original_user_agent_string.replace("Headless", ""),
+            },
+        )
+        if emulate_touch:
+            instance.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": """
+                                   Object.defineProperty(navigator, 'maxTouchPoints', {
+                                       get: () => 1
+                               })"""
+                },
+            )
 
-		return instance
+
+    # logger.debug(f"Starting undetected_chromedriver.Chrome({args}, {kwargs})")
+    return instance
 
 
 class ChromeOptions:
 	def __new__(cls, *arguments, **experimental_options):
-		global DEBUG
 
 		if not ChromeDriverManager.installed:
 			ChromeDriverManager().install()
@@ -132,17 +134,17 @@ class ChromeOptions:
 			if k == "excludeSwitches":
 				exp_options[k].extend(experimental_options[k])
 			elif k == 'debug':
-				DEBUG = 1
+				pass
 			else:
 				exp_options[k] = experimental_options[k]
 
-		if DEBUG:
-			logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
-			logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
-			logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
-			logger.info(f"Plugins:\n{highlight(pformat([plugin.name for plugin in plugin_list], compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+    # logger.info(f"Setting undetected_chromedriver.ChromeOptions...")
+    # logger.info(f"Arguments:\n{highlight(pformat(arg_list, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+    # logger.info(f"Experimental options:\n{highlight(pformat(exp_options, compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
+    # logger.info(f"Plugins:\n{highlight(pformat([plugin.name for plugin in plugin_list], compact=True, sort_dicts=False), PythonLexer(), TerminalFormatter(style='monokai'))}")
 
-		for item in arg_list:
+
+        for item in arg_list:
 			instance.add_argument(item)
 		for k, v in exp_options.items():
 			instance.add_experimental_option(k, v)
@@ -200,8 +202,7 @@ class ChromeDriverManager(object):
 
 		selenium.webdriver.Chrome = Chrome
 		selenium.webdriver.ChromeOptions = ChromeOptions
-		if DEBUG:
-			logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
+		# logger.warning("Selenium patched. Safe to import Chrome / ChromeOptions")
 		self.__class__.selenium_patched = True
 
 	def install(self, patch_selenium=True):
@@ -256,13 +257,13 @@ class ChromeDriverManager(object):
 			os.chmod(self._exe_name, 0o755)
 		return self._exe_name
 
-	@staticmethod
-	def random_cdc():
-		cdc = random.choices(string.ascii_lowercase, k=26)
-		cdc[-6: -4] = map(str.upper, cdc[-6: -4])
-		cdc[2] = cdc[0]
-		cdc[3] = '_'
-		return ''.join(cdc).encode()
+    @staticmethod
+    def random_cdc():
+        cdc = random.choices(string.ascii_lowercase, k=26)
+        cdc[-6:-4] = map(str.upper, cdc[-6:-4])
+        cdc[2] = cdc[0]
+        cdc[3] = "_"
+        return "".join(cdc).encode()
 
 	def patch_binary(self):
 		"""
@@ -282,5 +283,5 @@ class ChromeDriverManager(object):
 			return linect
 
 
-def install(executable_path=None, target_version=None):
-	ChromeDriverManager(executable_path, target_version).install()
+def install(executable_path=None, target_version=None, *args, **kwargs):
+	ChromeDriverManager(executable_path, target_version, *args, **kwargs).install()
